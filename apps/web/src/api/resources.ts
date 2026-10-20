@@ -1,3 +1,4 @@
+import { EventVisibilityDocumentSchema, type EventVisibilityRequest } from "@musubi/types";
 import type { TaskForkAttempt } from "@musubi/calendar";
 import { TaskCreateSchema, TaskUpdateSchema, TaskPatchRequestSchema, TaskMutationResponseSchema, TaskDeleteResponseSchema, TaskDeliverySchema, TaskDeliveryInboxSchema, requireTaskRevision, type Task } from "@musubi/types";
 import { ProviderOrganizerCalendarSchema, ProviderRsvpReceiptSchema, type ProviderRsvpEdit, type ProviderOrganizerRequest } from "@musubi/types";
@@ -75,6 +76,14 @@ export function getCalendars(signal?: AbortSignal) {
     responseSchema: CalendarsResponseSchema,
     signal,
   });
+}
+
+export function getEventVisibility(signal?: AbortSignal) {
+  return apiRequest("/api/v1/event-visibility", { signal, responseSchema: EventVisibilityDocumentSchema });
+}
+
+export function putEventVisibility(request: EventVisibilityRequest) {
+  return apiRequest("/api/v1/event-visibility", { body: request, method: "PUT", responseSchema: z.void() });
 }
 
 export function getEvents(

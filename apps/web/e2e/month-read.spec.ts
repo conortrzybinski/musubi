@@ -405,6 +405,7 @@ async function mockAuthenticatedReads(
 	await page.route("**/api/v1/tasks", (route) => respond(route, { tasks: [] }));
 	await page.route("**/api/v1/event-deliveries", route => respond(route, { items: [], nextCursor: null }));
   await page.route("**/api/v1/task-deliveries*", route => respond(route, { items: [], nextCursor: null }));
+  await page.route("**/api/v1/event-visibility", route => respond(route, { hidden: [] }));
 	await page.route("**/api/auth/sign-out", (route) => {
 		authenticated = false;
 		return respond(route, { success: true });
@@ -11148,4 +11149,70 @@ test("task delivery notifications recover proven failed writes without retrying 
   await expect(panel.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
   await expectNoAccessibilityViolations(page);
   await panel.getByRole("button", { name: "Close", exact: true }).click(); await expect(bell).toBeFocused();
+});
+
+for (const mode of ["light", "dark"] as const) {
+  test(`personal event hiding survives reload and restores across dates (${mode})`, async ({ page }) => {
+    const eventId = "11111111-1111-4111-8111-111111111111";
+    const appointment = event(eventId, "Hidden work appointment", "studio", "#d6b76b", "2026-07-26T09:00:00.000Z", "2026-07-26T10:00:00.000Z");
+    await mockAuthenticatedReads(page, { ...events, events: [appointment] }, calendars.map(calendar => ({ ...calendar, role: "viewer" as const })));
+    await setTestTheme(page, mode);
+    if (mode === "dark") await page.setViewportSize({ width: 390, height: 844 });
+    let hidden = false;
+    const writes: unknown[] = [];
+    const eventWrites: string[] = [];
+    page.on("request", request => {
+      if (request.method() !== "GET" && /\/api\/v1\/events(?:\/|\?|$)/.test(request.url())) eventWrites.push(request.url());
+    });
+    await page.route("**/api/v1/event-visibility", route => {
+      if (route.request().method() === "PUT") {
+        const body = route.request().postDataJSON();
+        writes.push(body);
+        hidden = body.hidden;
+        return route.fulfill({ status: 204, body: "" });
+      }
+      return respond(route, { hidden: hidden ? [{ eventId, event: appointment }] : [] });
+    });
+    await page.goto(`/app/p/${DEFAULT_PAGE_ID}/month?date=2026-07-26`);
+    const chip = page.getByRole("button", { name: /^Hidden work appointment,/ }).first();
+    await chip.click();
+    await page.getByRole("button", { name: "More event actions" }).click();
+    await page.getByRole("menuitem", { name: "Hide event", exact: true }).click();
+    await expect(chip).toHaveCount(0);
+    expect(writes).toEqual([{ eventId, hidden: true }]);
+    await expect(page.getByRole("button", { name: "Search events and actions" })).toBeFocused();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "My calendar" })).toBeVisible();
+    await expect(chip).toHaveCount(0);
+    await page.goto(`/app/p/${DEFAULT_PAGE_ID}/month?date=2030-12-01`);
+    if (mode === "dark") await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("button", { name: "Hidden events", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Hidden events", exact: true });
+    await expect(dialog.getByText("Hidden work appointment", { exact: true })).toBeVisible();
+    await expectNoAccessibilityViolations(page);
+    if (mode === "light" && process.env.MUSUBI_VISIBILITY_SCREENSHOT) await page.screenshot({ path: process.env.MUSUBI_VISIBILITY_SCREENSHOT, fullPage: false });
+    await dialog.getByRole("button", { name: "Show Hidden work appointment" }).press("Enter");
+    await expect(dialog.getByText("No hidden events", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Close hidden events" }).click();
+    if (mode === "dark") await expect(page.getByRole("button", { name: "Open navigation" })).toBeFocused();
+    await page.goto(`/app/p/${DEFAULT_PAGE_ID}/month?date=2026-07-26`);
+    await expect(chip).toBeVisible();
+    expect(writes).toEqual([{ eventId, hidden: true }, { eventId, hidden: false }]);
+    expect(eventWrites).toEqual([]);
+  });
+}
+
+test("personal event hiding fails closed when display preferences cannot load", async ({ page }) => {
+  await mockAuthenticatedReads(page);
+  let unavailable = true;
+  await page.route("**/api/v1/event-visibility", route => unavailable
+    ? respond(route, { error: "Display preferences unavailable." }, 403)
+    : respond(route, { hidden: [] }));
+  await page.goto(`/app/p/${DEFAULT_PAGE_ID}/month?date=2026-07-26`);
+  await expect(page.getByRole("heading", { name: "We could not open this calendar." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Client call,/ })).toHaveCount(0);
+  unavailable = false;
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("heading", { name: "My calendar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Client call,/ }).first()).toBeVisible();
 });

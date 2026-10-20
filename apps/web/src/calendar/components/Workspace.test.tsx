@@ -1137,3 +1137,19 @@ describe("Workspace", () => {
     ).toBe("Provider event");
   });
 });
+
+
+it.each(["month", "multi-week", "day", "week", "agenda"] as const)("keeps hidden events out of the %s view and offers recovery across dates", async activeView => {
+  const user = userEvent.setup();
+  const event = { ...fixtureEvents[0]!, id: "11111111-1111-4111-8111-111111111111", title: "Hidden appointment", start: new Date("2026-07-26T09:00:00Z"), end: new Date("2026-07-26T10:00:00Z"), recurrence: undefined };
+  const future = { ...event, id: "22222222-2222-4222-8222-222222222222", title: "Future hidden appointment", start: new Date("2030-07-26T09:00:00Z"), end: new Date("2030-07-26T10:00:00Z") };
+  const set = vi.fn().mockResolvedValue(undefined);
+  const hidden = [{ eventId: event.id, event }, { eventId: future.id, event: future }];
+  render(<Workspace {...commonProps} activeView={activeView} events={[event]} baseEvents={[event]} eventVisibility={{ hidden, set }} />);
+  expect(screen.queryByRole("button", { name: /^Hidden appointment,/ })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Hidden events" }));
+  const dialog = within(screen.getByRole("dialog", { name: "Hidden events" }));
+  expect(dialog.getByText("Future hidden appointment")).toBeTruthy();
+  await user.click(dialog.getByRole("button", { name: "Show Future hidden appointment" }));
+  expect(set).toHaveBeenCalledWith({ eventId: future.id, hidden: false });
+});

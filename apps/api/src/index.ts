@@ -56,6 +56,7 @@ import {
 } from "./handlers/events";
 import { handlerDiscardEventAlarm, handlerGetEventDeliveryInbox, handlerGetEventDelivery, handlerRetryEventDelivery, handlerGetEventDeliveryConflict, handlerResolveEventDelivery } from "./handlers/event_delivery";
 import { registerTaskRoutes } from "./task_routes";
+import { handlerGetEventVisibility, handlerPutEventVisibility } from "./handlers/event_visibility";
 import { drainTaskOutbox } from "./sync/engine";
 import { requireAuth } from "./middleware/require_auth";
 import { BadRequestError, ForbiddenError } from "@musubi/types";
@@ -329,6 +330,8 @@ app.delete(
 // Events
 app.get("/api/v1/event-deliveries", requireAuth, wrap(handlerGetEventDeliveryInbox));
 app.get("/api/v1/events", requireAuth, wrap(handlerGetEvents));
+app.get("/api/v1/event-visibility", requireAuth, wrap(handlerGetEventVisibility));
+app.put("/api/v1/event-visibility", requireAuth, wrap(handlerPutEventVisibility));
 app.get("/api/v1/events/:eventId/delivery", requireAuth, wrap(handlerGetEventDelivery));
 app.post("/api/v1/events/:eventId/delivery/:operationId/retry", requireAuth, rateLimit(30, 60_000, { byUser: true }), wrap(handlerRetryEventDelivery));
 app.get("/api/v1/events/:eventId/delivery/:operationId/conflict", requireAuth, rateLimit(30, 60_000, { byUser: true }), wrap(handlerGetEventDeliveryConflict));

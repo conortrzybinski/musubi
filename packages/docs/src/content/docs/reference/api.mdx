@@ -137,12 +137,13 @@ Current event types:
 | `external_sync` | Silent delta refresh; do not trigger provider sync again |
 | `settings_updated` | Refetch settings; carries only `{ revision }` |
 | `reminders_updated` | Refetch reminder rules and reschedule; carries no payload |
+| `event_visibility_updated` | Web refetches personal hidden-event preferences; carries no payload |
 | `page_created` | Add the `PageDocument` in `data.page` |
 | `page_updated` | Replace the `PageDocument`; dedupe by `revision` |
 | `page_removed` | Drop the page id in `data.id`; the default may have moved |
 | `federated_sync` | Something changed on the connected server in `data.server`; refetch that server's data |
 
-Page, settings, and reminder events fan out only to the acting user's own sessions,
+Page, settings, reminder, and visibility events fan out only to the acting user's own sessions,
 including the originating one, which discards the duplicate by revision.
 
 Task mutation frames contain only `payload: { id, revision, actorID }`, with the
@@ -522,3 +523,34 @@ Update all of these seams in one change:
 7. this inventory and the relevant architecture page.
 
 The full recipe is in [API Server → How to add an endpoint](/docs/architecture/api/#how-to-add-an-endpoint).
+
+## Personal event visibility (fork)
+
+`GET /api/v1/event-visibility` returns `EventVisibilityDocument`:
+`{ hidden: [{ eventId, originalStart?, event }] }`. Recovery includes accessible
+hidden events across every date, with only the caller's calendar memberships.
+Deleted events and events whose membership was revoked are omitted. Responses
+are `private, no-store`.
+
+`PUT /api/v1/event-visibility` accepts `EventVisibilityRequest`:
+`{ eventId, originalStart?, hidden }` and returns `204`. Any current viewer may
+set their own preference; unavailable events return `404`. An omitted
+`originalStart` hides the whole event or series. An explicit occurrence uses
+its series UUID plus the original instant, floating civil time, or all-day date,
+so moving that occurrence does not expose it again. Legacy series without an
+explicit time model support whole-series hiding. Restoring a series removes
+only that entry; separately hidden occurrences remain hidden. A changed series
+may remove old slots; their preferences remain recoverable, and a split creating
+a new series UUID does not inherit the old series preference.
+
+Preferences persist in `event_visibility` and invalidate only the caller's
+sessions using `event_visibility_updated`. They never alter event content,
+revision, calendar links, provider identities, or provider delivery work. The
+first fork increment applies hiding to web calendar presentation; the mobile
+client continues displaying all events. Raw event reads, reminders, availability,
+and remote Google/Outlook calendars retain the original event. Linked copies
+share a canonical event UUID and therefore share a personal hiding preference.
+
+Authenticated HTTP/PostgreSQL coverage is in
+`apps/api/src/handlers/event_visibility.integration.test.ts`; provider round trips
+are not part of that simulated test suite.

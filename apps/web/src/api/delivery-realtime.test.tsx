@@ -98,3 +98,25 @@ it("manual refresh waits for every source on failure and retains other accounts 
   stops.forEach(stop => stop());
   client.clear();
 });
+
+
+it("refreshes personal event visibility only for the signed-in account", async () => {
+  const sources: FakeSource[] = [];
+  class FakeSource {
+    onmessage?: (message: { data: string }) => void;
+    close = vi.fn();
+    constructor() { sources.push(this); }
+  }
+  vi.stubGlobal("EventSource", FakeSource);
+  const client = new QueryClient();
+  const own = queryKeys.eventVisibility(getServerOrigin(), "owner");
+  const other = queryKeys.eventVisibility(getServerOrigin(), "other");
+  client.setQueryData(own, { hidden: [] });
+  client.setQueryData(other, { hidden: [] });
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  renderHook(() => useServerStream("owner"), { wrapper });
+  act(() => sources[0]!.onmessage?.({ data: JSON.stringify({ type: "event_visibility_updated", payload: {} }) }));
+  await waitFor(() => expect(client.getQueryState(own)?.isInvalidated).toBe(true));
+  expect(client.getQueryState(other)?.isInvalidated).toBe(false);
+  client.clear();
+});

@@ -1,6 +1,7 @@
 import {
   CircleCheck,
   CloudOff,
+  EyeOff,
   Layers3,
   Link2,
   LogOut,
@@ -73,6 +74,7 @@ type SidebarProps = {
   onManageAccount: (returnFocus: HTMLElement | null) => void;
   onManageCalendars: (returnFocus: HTMLElement) => void;
   onManageConnections: (returnFocus: HTMLElement) => void;
+  onManageHiddenEvents?: (returnFocus: HTMLElement) => void;
   onModalStateChange?: (modal: boolean) => void;
   onOpenSettings: (returnFocus: HTMLElement) => void;
   onPageChange: (pageId: string) => void;
@@ -100,6 +102,7 @@ export function Sidebar({
   onManageAccount,
   onManageCalendars,
   onManageConnections,
+  onManageHiddenEvents,
   onModalStateChange,
   onOpenSettings,
   onDateChange,
@@ -399,6 +402,9 @@ export function Sidebar({
         </div>
 
         <nav className="grid flex-none gap-1 px-3.5 pb-3.5" aria-label="Manage Musubi">
+          {onManageHiddenEvents ? <SidebarRow>
+            <RowAction icon={<EyeOff strokeWidth={1.6} />} label="Hidden events" showChevron={false} size="compact" onClick={event => onManageHiddenEvents(event.currentTarget)} />
+          </SidebarRow> : null}
           <SidebarRow>
             <RowAction
               icon={<Layers3 strokeWidth={1.6} />}
