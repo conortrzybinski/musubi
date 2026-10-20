@@ -28,6 +28,13 @@ of a server deployment or live provider acceptance. Fork:
   record the full final fork commit and resulting image IDs. Package version
   alone cannot distinguish this fork from upstream.
 
+Use Node **22.23.1** for local checks, recorded in `.node-version` and verified
+inside the pinned image. The host's older 22.22.1 failed existing clean-process
+ESM import assertions in the config and calendar tests; 22.23.1 supplies the
+expected named exports. Do not disable those assertions. The host's Corepack
+0.24 also cannot launch pnpm 11.8.0; a current Corepack or direct execution of
+that exact downloaded pnpm version avoids changing the repository lockfile.
+
 ## Account and editing evidence
 
 Multiple-account support exists in source: authenticated `linkSocial` permits

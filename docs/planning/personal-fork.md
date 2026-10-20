@@ -22,7 +22,8 @@ must be reported separately.
 - Reviewed and cloned source: `f82cba9cf9e6f7b858c52e3c2361b185b27b520d`.
 - Fork: `https://github.com/conortrzybinski/musubi`.
 - Implementation branch: `codex/personal-calendar`.
-- Runtime used locally: Node 22.22.1 and repository-pinned pnpm 11.8.0.
+- Reproducible check runtime: Node 22.23.1 (`.node-version`, matching the pinned
+  Docker image) and repository-pinned pnpm 11.8.0.
 - Installation uses the unchanged `pnpm-lock.yaml`.
 - Deployment host: homelabtower, confirmed by the user. Initial listener is
   loopback-only; public domain and OAuth registration remain pending.
@@ -39,6 +40,8 @@ For explicit recurrence identities, a user can hide a whole series or one
 original occurrence. A moved exception keeps its original identity. Legacy
 recurrence without a reliable occurrence identity supports whole-series hiding
 only. Restoring a series preference does not erase separately hidden occurrences.
+Splitting a series creates a new canonical identity; it does not automatically
+inherit the old series' visibility preference.
 
 The web calendar and account search apply the preference to presentation. A
 dedicated Hidden events view lists accessible saved preferences across dates and
