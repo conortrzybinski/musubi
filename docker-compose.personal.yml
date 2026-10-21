@@ -1,0 +1,38 @@
+# Layer over docker-compose.yml for this fork; never use it by itself.
+# Export MUSUBI_FORK_REV=$(git rev-parse HEAD) from the clean, reviewed checkout.
+# Set MUSUBI_PERSONAL_ENV_FILE to the absolute private environment-file path.
+# Build BOTH services before starting. No registry publication is required.
+# Requires Compose support for !override; local verification uses 5.6.0.
+name: musubi-personal
+services:
+  gateway:
+    environment:
+      PUBLIC_HOST: :80
+    ports: !override
+      - "127.0.0.1:${MUSUBI_PERSONAL_PORT:-7532}:80"
+
+  api:
+    image: musubi-personal-api:${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}
+    pull_policy: never
+    env_file: !override
+      - ${MUSUBI_PERSONAL_ENV_FILE:?Set MUSUBI_PERSONAL_ENV_FILE to the absolute private environment-file path}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      labels:
+        org.opencontainers.image.source: https://github.com/conortrzybinski/musubi
+        org.opencontainers.image.revision: ${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}
+    labels:
+      org.opencontainers.image.revision: ${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}
+
+  web:
+    image: musubi-personal-web:${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      labels:
+        org.opencontainers.image.source: https://github.com/conortrzybinski/musubi
+        org.opencontainers.image.revision: ${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}
+    labels:
+      org.opencontainers.image.revision: ${MUSUBI_FORK_REV:?Set MUSUBI_FORK_REV to the reviewed commit SHA}

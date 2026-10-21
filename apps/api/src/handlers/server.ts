@@ -41,7 +41,7 @@ function enabledWebSocials(): string[] {
 // only providers this server can actually run. OAuth sync needs the secret
 // too (refresh flow); CalDAV needs the key that encrypts stored passwords.
 function enabledSyncProviders(): string[] {
-  const providers: string[] = [];
+  const providers: string[] = ["ics"];
   if (config.social.googleWebClientID && config.social.googleClientSecret) providers.push("google");
   if (config.social.microsoftClientID && config.social.microsoftClientSecret) providers.push("microsoft");
   if (config.security.caldavEncKey) providers.push("caldav");

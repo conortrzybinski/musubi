@@ -97,6 +97,9 @@ import { SettingsWindow, type SettingsSectionId } from "./settings/SettingsWindo
 import { TimeGridView } from "./TimeGridView";
 import { TaskList } from "./TaskList";
 import { Toolbar } from "./Toolbar";
+import { isEventHidden, type EventVisibilityRequest } from "@musubi/types";
+import type { EventVisibilityControl } from "../use-event-visibility";
+import { HiddenEventsDialog } from "./HiddenEventsDialog";
 import { ApplicationNotifications } from "~/notifications/ApplicationNotifications";
 
 const TOAST_ACKNOWLEDGEMENT_MS = 3_500;
@@ -107,6 +110,7 @@ type WorkspaceProps = {
   taskLayout?: "list" | "kanban";
   onTaskLayoutChange?: (layout: "list" | "kanban") => void;
   baseEvents?: Event[];
+  eventVisibility?: EventVisibilityControl;
   calendars: Calendar[];
   date: string;
   events: Event[];
@@ -293,6 +297,7 @@ export function Workspace({
   taskLayout,
   onTaskLayoutChange,
   baseEvents,
+  eventVisibility,
   calendars,
   date,
   events,
@@ -377,6 +382,7 @@ export function Workspace({
   }>();
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hiddenEventsReturnFocus, setHiddenEventsReturnFocus] = useState<HTMLElement>();
   const [sidebarModal, setSidebarModal] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const [notice, setNotice] = useState<{
@@ -533,7 +539,7 @@ export function Workspace({
   const [searchTaskId, setSearchTaskId] = useState<string>();
   const taskReturnFocus = useRef<HTMLElement | null>(null);
   const [searchDetailId, setSearchDetailId] = useState<string>();
-  const searchDetail = (searchAccount?.data?.events ?? events).find(event => event.id === searchDetailId);
+  const searchDetail = (searchAccount?.data?.events ?? events).find(event => event.id === searchDetailId && !isEventHidden(event, eventVisibility?.hidden ?? []));
   useEffect(() => {
     onSearchActiveChange?.(searchOpen || !!searchTaskId || !!searchDetailId);
   }, [searchOpen, searchTaskId, searchDetailId, onSearchActiveChange]);
@@ -589,6 +595,13 @@ export function Workspace({
     () => getEditableTaskCalendars(calendars),
     [calendars],
   );
+  async function changeEventVisibility(request: EventVisibilityRequest) {
+    if (!eventVisibility) return;
+    await eventVisibility.set(request);
+    // A hidden event removes its inspector trigger. Give keyboard users a
+    // stable workspace control after the inspector's focus scope unmounts.
+    if (request.hidden) requestAnimationFrame(() => searchTriggerRef.current?.focus());
+  }
   const sourceEvents = baseEvents ?? events;
   const eventMasters = useMemo(() => {
     const masters = new Map(
@@ -676,10 +689,11 @@ export function Workspace({
   const visibleEvents = useMemo(
     () =>
       [...events, ...calendarTasks(tasks, calendars)].filter((event) =>
+        (isCalendarTask(event) || !isEventHidden(event, eventVisibility?.hidden ?? [])) &&
         itemTypes.includes(isCalendarTask(event) ? "tasks" : eventItemType(event)) &&
         event.calendars.some((calendarId) => visibleCalendarIds.includes(calendarId)),
       ),
-    [events, tasks, calendars, visibleCalendarIds, itemTypes],
+    [events, tasks, calendars, visibleCalendarIds, itemTypes, eventVisibility?.hidden],
   );
   const searchVisibleEventIds = useMemo(() => {
     if (activeView === "tasks") return [];
@@ -1006,6 +1020,12 @@ export function Workspace({
         onManageAccount={returnFocus => openSidebarSettings("account", returnFocus)}
         onManageCalendars={returnFocus => openSidebarSettings("calendars", returnFocus)}
         onManageConnections={returnFocus => openSidebarSettings("connections", returnFocus)}
+        onManageHiddenEvents={eventVisibility ? returnFocus => {
+          requestInspectorTransition(() => {
+            setSidebarOpen(false);
+            setHiddenEventsReturnFocus(sidebarModal ? sidebarTriggerRef.current ?? returnFocus : returnFocus);
+          });
+        } : undefined}
         onEditPage={(page) => {
           setSidebarOpen(false);
           if (savingPageId === page.id) return;
@@ -1204,6 +1224,7 @@ export function Workspace({
               getEventMaster={getEventMaster}
               onForkEvent={onForkEvent}
               onLinkEvent={onLinkEvent}
+              onSetEventVisibility={eventVisibility && !offline ? changeEventVisibility : undefined}
               onNotice={notify}
               onOpenFullEditor={onOpenFullEditor}
               onRemoveEvent={onRemoveEvent}
@@ -1244,6 +1265,7 @@ export function Workspace({
               getEventMaster={getEventMaster}
               onForkEvent={onForkEvent}
               onLinkEvent={onLinkEvent}
+              onSetEventVisibility={eventVisibility && !offline ? changeEventVisibility : undefined}
               onCreateAtTime={
                 editableCalendars.length > 0
                   ? (nextDate, time, createAnchor, endTime, exactRange) =>
@@ -1276,6 +1298,7 @@ export function Workspace({
               getEventMaster={getEventMaster}
               onForkEvent={onForkEvent}
               onLinkEvent={onLinkEvent}
+              onSetEventVisibility={eventVisibility && !offline ? changeEventVisibility : undefined}
               onNotice={notify}
               onOpenFullEditor={onOpenFullEditor}
               onRemoveEvent={onRemoveEvent}
@@ -1313,6 +1336,7 @@ export function Workspace({
               getEventMaster={getEventMaster}
               onForkEvent={onForkEvent}
               onLinkEvent={onLinkEvent}
+              onSetEventVisibility={eventVisibility && !offline ? changeEventVisibility : undefined}
               onCreateAtDate={
                 editableCalendars.length > 0
                   ? (nextDate, target, endDate) =>
@@ -1355,7 +1379,10 @@ export function Workspace({
           calendars={calendars}
           visibleCalendarIds={visibleCalendarIds}
           visibleEventIds={searchVisibleEventIds}
-          accountSource={searchAccount}
+          accountSource={searchAccount ? {
+            ...searchAccount,
+            data: searchAccount.data ? { ...searchAccount.data, events: searchAccount.data.events.filter(event => !isEventHidden(event, eventVisibility?.hidden ?? [])) } : undefined,
+          } : undefined}
           canCreateMeetings={!offline && calendars.some(isMeetingCalendarCandidate)}
           onCreateMeeting={() => {
             const returnFocus = searchTriggerRef.current;
@@ -1406,6 +1433,14 @@ export function Workspace({
             ) : null}
           </DialogContent>
         </Dialog>
+
+        {hiddenEventsReturnFocus && eventVisibility ? <HiddenEventsDialog
+          hidden={eventVisibility.hidden}
+          offline={offline}
+          returnFocus={hiddenEventsReturnFocus}
+          onClose={() => setHiddenEventsReturnFocus(undefined)}
+          onRestore={target => eventVisibility.set({ ...target, hidden: false })}
+        /> : null}
 
         <ShortcutsDialog onOpenChange={setShortcutsOpen} open={shortcutsOpen} />
 

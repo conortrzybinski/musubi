@@ -78,3 +78,5 @@ export * from "./queries/graph-series-time";
 export * from "./queries/source-read";
 
 export * from "./queries/operation-admission";
+export * from "./queries/event-visibility";
+export * from "./queries/subscriptions";

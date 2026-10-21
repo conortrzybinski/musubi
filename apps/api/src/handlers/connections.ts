@@ -15,7 +15,7 @@ import { z } from "zod";
 
 const syncRequest = z
   .object({
-    provider: z.enum(["google", "microsoft", "caldav"]).optional(),
+    provider: z.enum(["google", "microsoft", "caldav", "ics"]).optional(),
     accountId: z.string().min(1).optional(),
   })
   .strict()

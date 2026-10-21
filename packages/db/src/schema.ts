@@ -747,6 +747,19 @@ export const eventReminders = pgTable(
   (t) => [unique().on(t.eventID, t.userID)],
 );
 
+// Personal presentation only: never part of the canonical event or outbox.
+// Empty scope means the whole event/series; other scopes name original slots.
+export const eventVisibility = pgTable("event_visibility", {
+  userID: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  eventID: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+  scopeKey: text("scope_key").notNull().default(""),
+  originalStart: jsonb("original_start").$type<OccurrenceStart>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.userID, t.eventID, t.scopeKey] }),
+  check("event_visibility_scope_check", sql`(${t.scopeKey} = '' AND ${t.originalStart} IS NULL) OR (${t.originalStart} IS NOT NULL AND ${t.scopeKey} = (${t.originalStart}->>'kind') || ':' || (${t.originalStart}->>'value'))`),
+]);
+
 // One browser that has agreed to be pushed to. The endpoint is a URL at the
 // browser vendor's push service and IS the address, so it is the unique key —
 // the same person on a laptop and a phone browser is two rows, and re-granting
@@ -877,6 +890,23 @@ export const externalCalendars = pgTable(
 );
 
 export type NewExternalCalendar = typeof externalCalendars.$inferInsert;
+
+// Subscription links are bearer credentials: only ciphertext is stored here.
+// The calendar FK also erases the credential when a mirror is disconnected.
+export const calendarSubscriptions = pgTable("calendar_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userID: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  calendarID: uuid("calendar_id").notNull().references(() => calendars.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  encryptedURL: text("encrypted_url").notNull(),
+  urlHash: text("url_hash").notNull(),
+  generation: integer("generation").notNull().default(0),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  error: text("error"),
+}, t => [unique().on(t.userID, t.urlHash), unique().on(t.calendarID)]);
 
 export const externalEvents = pgTable(
   "external_events",

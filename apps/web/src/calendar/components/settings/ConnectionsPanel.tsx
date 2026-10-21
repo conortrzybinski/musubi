@@ -21,6 +21,7 @@ import { CalendarDot } from "../CalendarDot";
 import { AccountMark, ProviderIcon } from "../ProviderIcon";
 import { APPLE_CALDAV_URL, CaldavDialog, type CaldavDraft } from "./CaldavDialog";
 import { Hint } from "./hint";
+import { SubscriptionsSection } from "./SubscriptionsSection";
 
 export type ConnectionsPanelProps = {
   calendars: Calendar[];
@@ -47,7 +48,7 @@ function connectedAccounts(calendars: Calendar[]): ConnectedAccount[] {
   for (const calendar of calendars) {
     // Federated servers have their own status source below, which remains
     // available even when a remote server cannot return its calendars.
-    if (calendar.provider === "musubi") continue;
+    if (calendar.provider === "musubi" || calendar.provider === "ics") continue;
     if (!calendar.provider || !calendar.accountId) continue;
     const key = `${calendar.provider}:${calendar.accountId}`;
     const reconnect = calendar.syncStatus === "reconnect_required";
@@ -395,6 +396,8 @@ export function ConnectionsPanel({ calendars, importFailed, importing, onNotice,
         )}
         {error && errorArea === "add" ? <InlineError>{error}</InlineError> : null}
       </SettingsSection>
+
+      {providers.includes("ics") ? <SubscriptionsSection userId={userId} onNotice={onNotice} /> : null}
 
       <SettingsSection title="Join a shared calendar" variant="plain">
         {invite ? (

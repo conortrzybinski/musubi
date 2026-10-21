@@ -1,4 +1,4 @@
-import { CalendarSchema, EventSchema } from "@musubi/types";
+import { CalendarSchema, EventSchema, EventVisibilityDocumentSchema } from "@musubi/types";
 import type { DehydratedState } from "@tanstack/react-query";
 import { z } from "zod";
 import {
@@ -23,6 +23,7 @@ import { CACHE_BUSTER, CACHE_EVENT_RANGE_LIMIT } from "./cache-version";
 const CACHEABLE = {
  calendars: CalendarsResponseSchema,
  events: EventsResponseSchema,
+ "event-visibility": EventVisibilityDocumentSchema,
  // A composed shape rather than a contract of its own: the federated query
  // stitches remote calendars and events together client-side.
  federated: z.object({

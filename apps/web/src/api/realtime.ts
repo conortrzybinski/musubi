@@ -51,6 +51,7 @@ export async function refreshServerData(queryClient: QueryClient, userId: string
     queryKeys.pages(origin, userId),
     queryKeys.settings(origin, userId),
     queryKeys.reminders(origin, userId),
+    queryKeys.eventVisibility(origin, userId),
     queryKeys.announcements(origin, userId),
     ["events", origin, userId],
     ["delivery", origin, userId],
@@ -82,6 +83,7 @@ export function useServerStream(userId: string) {
     const pagesKey = queryKeys.pages(origin, userId);
     const settingsKey = queryKeys.settings(origin, userId);
     const remindersKey = queryKeys.reminders(origin, userId);
+    const visibilityKey = queryKeys.eventVisibility(origin, userId);
     const tasksKey = queryKeys.tasks(origin, userId);
     const calendarsKey = queryKeys.calendars(origin, userId);
     const federatedKey = queryKeys.federated(origin, userId);
@@ -137,9 +139,11 @@ export function useServerStream(userId: string) {
         case "settings_updated":
           void queryClient.invalidateQueries({ queryKey: settingsKey });
           break;
-        // This user changed a reminder rule somewhere else. Only their own
-        // connections get this frame, and refetching is what makes "an hour
-        // before" set on the phone reach the tab that will actually ring.
+        // Personal presentation preferences only reach this user's devices.
+        case "event_visibility_updated":
+          void queryClient.invalidateQueries({ queryKey: visibilityKey });
+          break;
+        // A reminder changed on another device of this user.
         case "reminders_updated":
           void queryClient.invalidateQueries({ queryKey: remindersKey });
           break;
@@ -153,6 +157,7 @@ export function useServerStream(userId: string) {
         case "calendar_removed":
           void queryClient.invalidateQueries({ queryKey: tasksKey });
           void queryClient.invalidateQueries({ queryKey: calendarsKey });
+          void queryClient.invalidateQueries({ queryKey: visibilityKey });
           void queryClient.invalidateQueries({ queryKey: eventsPrefix });
           void queryClient.invalidateQueries({ queryKey: deliveryPrefix });
           break;
@@ -160,13 +165,16 @@ export function useServerStream(userId: string) {
         case "event_updated":
         case "event_removed":
         case "attendance_changed":
+          void queryClient.invalidateQueries({ queryKey: visibilityKey });
           void queryClient.invalidateQueries({ queryKey: eventsPrefix });
           void queryClient.invalidateQueries({ queryKey: deliveryPrefix });
           break;
         case "external_sync":
+          void queryClient.invalidateQueries({ queryKey: ["subscriptions", origin, userId] });
           void queryClient.resetQueries({ queryKey: ["availability", origin, userId] });
           void queryClient.invalidateQueries({ queryKey: tasksKey });
           void queryClient.invalidateQueries({ queryKey: calendarsKey });
+          void queryClient.invalidateQueries({ queryKey: visibilityKey });
           void queryClient.invalidateQueries({ queryKey: eventsPrefix });
           void queryClient.invalidateQueries({ queryKey: deliveryPrefix });
           break;

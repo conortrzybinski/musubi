@@ -1,3 +1,4 @@
+import { eventVisibilityTarget, type EventVisibilityRequest } from "@musubi/types";
 import { isCalendarTask } from "@musubi/calendar";
 import { CalendarTaskDetails } from "./CalendarTaskDetails";
 import { isGoogleEditorPrivacyRefresh, refreshPrivateEditorBaseline, refreshPrivateEditorValues, rememberPrivateEditorChanges, type PrivateEditorField } from "../event-editor-privacy";
@@ -33,6 +34,7 @@ import {
 	Clock3,
 	CopyPlus,
 	Ellipsis,
+	EyeOff,
 	FileText,
 	Link2,
 	MapPin,
@@ -113,6 +115,7 @@ type TargetMutation = {
 };
 
 export type EventActionHandlers = {
+	onSetEventVisibility?: (request: EventVisibilityRequest) => Promise<void>;
 	onApplyEventScope?: (event: Event, request: EventScopeRequest) => Promise<unknown>;
 	getEventMaster: (event: Event) => Event;
 	onForkEvent: (input: TargetMutation) => Promise<Event>;
@@ -189,6 +192,7 @@ function CalendarEventDetailsPopover({
 	onSetAttendance,
 	onUpdateEvent,
 	onApplyEventScope,
+	onSetEventVisibility,
 	reminders,
 	timeFormat,
 	user,
@@ -509,6 +513,24 @@ function CalendarEventDetailsPopover({
 			setPendingDeleteScope(undefined);
 		}
 	}
+
+  async function hideEvent(scope: "event" | "series") {
+    if (!onSetEventVisibility || busyAction) return;
+    setBusyAction("hide");
+    setActionError(undefined);
+    try {
+      const target = eventVisibilityTarget(scope === "series" ? master : event, scope);
+      await onSetEventVisibility({ ...target, hidden: true });
+      handleOpenChange(false, true);
+      onNotice(target.originalStart ? "Occurrence hidden." : (master.recurrence || event.seriesID) ? "Series hidden." : "Event hidden.", {
+        undo: () => onSetEventVisibility({ ...target, hidden: false }),
+      });
+    } catch (cause) {
+      setActionError({ message: cause instanceof Error ? cause.message : "Could not hide this event. Try again." });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
 
 	function beginDelete() {
 		if (master.recurrence) {
@@ -1000,6 +1022,11 @@ function CalendarEventDetailsPopover({
 											</Button>
 										</MenuTrigger>
 										<MenuContent align="start" label="Event actions">
+                      {onSetEventVisibility && !homeConnectionId ? <>
+                        {(event.seriesID && event.originalStart) || ("occurrenceIdentity" in event && event.occurrenceIdentity) ? <MenuItem icon={<EyeOff size={16} strokeWidth={1.6} />} disabled={Boolean(busyAction)} onSelect={() => void hideEvent("event")}>Hide this occurrence</MenuItem> : null}
+                        <MenuItem icon={<EyeOff size={16} strokeWidth={1.6} />} disabled={Boolean(busyAction)} onSelect={() => void hideEvent("series")}>{master.recurrence || event.seriesID ? "Hide entire series" : "Hide event"}</MenuItem>
+                        <MenuSeparator />
+                      </> : null}
 											{canAddToCalendar ? (
 												<>
 													<MenuItem icon={<Link2 size={16} strokeWidth={1.6} />} onSelect={() => showTargetCalendars("link")}>

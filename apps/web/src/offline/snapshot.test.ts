@@ -77,6 +77,7 @@ describe("shouldPersistQuery", () => {
     for (const name of [
       "calendars",
       "events",
+      "event-visibility",
       "federated",
       "pages",
       "settings",
@@ -244,4 +245,20 @@ describe("cacheNamespace", () => {
   it("keeps the origin readable as a short hash rather than a URL", () => {
     expect(hashOrigin("https://musubi.pro")).toMatch(/^[a-z0-9]+$/);
   });
+});
+
+
+it("revives hidden preferences and event summary dates in the account snapshot", () => {
+  const eventId = "11111111-1111-4111-8111-111111111111";
+  const entry = query(["event-visibility", "origin", "owner"], { hidden: [{
+    eventId,
+    originalStart: { kind: "date", value: "2026-07-20" },
+    event: { ...eventsPayload.events[0], id: eventId },
+  }] });
+  const revived = reviveQueries([entry]);
+  expect(revived).toHaveLength(1);
+  expect(revived[0]!.state.data).toEqual({ hidden: [{
+    eventId, originalStart: { kind: "date", value: "2026-07-20" },
+    event: expect.objectContaining({ start: new Date("2026-07-20T09:00:00Z") }),
+  }] });
 });

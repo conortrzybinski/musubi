@@ -2,6 +2,7 @@ export * from "./errors";
 export * from "./user";
 export * from "./calendar";
 export * from "./event";
+export * from "./event-visibility";
 export * from "./event_time";
 export * from "./sync_protocol";
 export * from "./sync_operation";

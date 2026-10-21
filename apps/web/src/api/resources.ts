@@ -1,3 +1,4 @@
+import { EventVisibilityDocumentSchema, type EventVisibilityRequest } from "@musubi/types";
 import type { TaskForkAttempt } from "@musubi/calendar";
 import { TaskCreateSchema, TaskUpdateSchema, TaskPatchRequestSchema, TaskMutationResponseSchema, TaskDeleteResponseSchema, TaskDeliverySchema, TaskDeliveryInboxSchema, requireTaskRevision, type Task } from "@musubi/types";
 import { ProviderOrganizerCalendarSchema, ProviderRsvpReceiptSchema, type ProviderRsvpEdit, type ProviderOrganizerRequest } from "@musubi/types";
@@ -75,6 +76,14 @@ export function getCalendars(signal?: AbortSignal) {
     responseSchema: CalendarsResponseSchema,
     signal,
   });
+}
+
+export function getEventVisibility(signal?: AbortSignal) {
+  return apiRequest("/api/v1/event-visibility", { signal, responseSchema: EventVisibilityDocumentSchema });
+}
+
+export function putEventVisibility(request: EventVisibilityRequest) {
+  return apiRequest("/api/v1/event-visibility", { body: request, method: "PUT", responseSchema: z.void() });
 }
 
 export function getEvents(
@@ -497,6 +506,21 @@ export function connectCaldav(input: {
     // Connection includes provider discovery and the initial calendar import.
     timeoutMs: 60_000,
   });
+}
+
+const SubscriptionsSchema = z.object({ subscriptions: z.array(z.object({
+  id: z.string(), calendarId: z.string(), name: z.string(),
+  lastAttemptAt: z.string().nullable(), lastSuccessAt: z.string().nullable(), error: z.string().nullable(),
+})) });
+export function getSubscriptions(signal?: AbortSignal) {
+  return apiRequest("/api/v1/users/connections/subscriptions", { responseSchema: SubscriptionsSchema, signal });
+}
+export function subscribeCalendar(input: { name: string; url: string }) {
+  return apiRequest("/api/v1/users/connections/subscriptions", { body: input, method: "POST", timeoutMs: 60_000,
+    responseSchema: z.object({ id: z.string(), calendarId: z.string() }) });
+}
+export function unsubscribeCalendar(id: string) {
+  return apiRequest("/api/v1/users/connections/subscriptions", { body: { id }, method: "DELETE", responseSchema: z.unknown() });
 }
 
 // Federated servers are not provider accounts — they have their own connection

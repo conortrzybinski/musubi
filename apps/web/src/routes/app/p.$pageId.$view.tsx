@@ -14,6 +14,7 @@ import { useNewerServer } from "~/api/use-newer-server";
 import { getServerOrigin, queryKeys } from "~/api/query-keys";
 import { createTask, getEvents, getTasks, linkTask, forkTask, removeTask, updateTask } from "~/api/resources";
 import { refreshServerData, useServerStream } from "~/api/realtime";
+import { useEventVisibility } from "~/calendar/use-event-visibility";
 import { useReminders } from "~/calendar/use-reminders";
 import { useProviderLinkReturn } from "~/calendar/connections";
 import { useSessionUser } from "~/auth/use-session-user";
@@ -87,6 +88,7 @@ function CalendarScreen({ editorOpen }: { editorOpen: boolean }) {
   // Reminders ring only while a tab is open (web push is a later phase), so
   // this lives at the top of the signed-in shell rather than inside a view.
   const reminders = useReminders(userId);
+  const eventVisibility = useEventVisibility(userId);
   // Above Workspace: provider return state must survive canonical Page redirects.
   const providerLink = useProviderLinkReturn(userId);
   const activeView: CalendarViewId = isCalendarView(view) ? view : "month";
@@ -130,6 +132,7 @@ function CalendarScreen({ editorOpen }: { editorOpen: boolean }) {
     workspace.events,
     workspace.pages,
     workspace.settings,
+    eventVisibility.query,
     ...((!snapshot.offline || tasksQuery.data !== undefined)
       ? [tasksQuery]
       : []),
@@ -278,6 +281,7 @@ function CalendarScreen({ editorOpen }: { editorOpen: boolean }) {
         error: searchEvents.isError || tasksQuery.isError,
         retry: () => { void searchEvents.refetch(); void tasksQuery.refetch(); },
       }}
+      eventVisibility={{ hidden: eventVisibility.query.data?.hidden ?? [], set: eventVisibility.set }}
       activeView={activeView}
       taskLayout={taskLayout ?? "list"}
       onTaskLayoutChange={layout => void navigate({ viewTransition: !window.matchMedia("(prefers-reduced-motion: reduce)").matches, search: previous => ({ ...previous, taskLayout: layout }), resetScroll: false })}

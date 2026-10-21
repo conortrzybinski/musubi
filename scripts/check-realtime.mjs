@@ -44,6 +44,9 @@ const PHONE_MAY_IGNORE = new Set([
   "page_created",
   "page_removed",
   "page_updated",
+  // This fork's first visibility increment filters the web presentation only.
+  // The phone still renders all events; its reminders and event cache are intact.
+  "event_visibility_updated",
 ]);
 
 /** An event type: snake_case, which no payload key in these calls is. */

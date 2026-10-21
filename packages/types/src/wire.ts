@@ -13,6 +13,7 @@ import {
   ScopeEditIntentSchema,
 } from "./event";
 import { InviteSchema } from "./invite";
+import { EventVisibilityDocumentSchema, EventVisibilityRequestSchema } from "./event-visibility";
 import { EventDeliveryInboxSchema, EventDeliverySchema, EventDeliveryConflictSchema, ResolveEventDeliveryRequestSchema } from "./event_delivery";
 import { PageDocumentSchema } from "./pages";
 import {
@@ -57,6 +58,8 @@ export const WIRE_CONTRACT: Record<
     schema: CalendarInvitePreviewSchema,
   },
   Event: { direction: "read", schema: EventSchema },
+  EventVisibilityDocument: { direction: "read", schema: EventVisibilityDocumentSchema },
+  EventVisibilityRequest: { direction: "write", schema: EventVisibilityRequestSchema },
   EventDeliveryInbox: { direction: "read", schema: EventDeliveryInboxSchema },
   EventDelivery: { direction: "read", schema: EventDeliverySchema },
   EventDeliveryConflict: { direction: "read", schema: EventDeliveryConflictSchema },

@@ -35,6 +35,7 @@ async function fixture(page: Page, initial = [] as ReturnType<typeof event>[], w
   await page.route("**/api/v1/event-deliveries", route => respond(route, { items: [], nextCursor: null }));
   await page.route("**/api/v1/announcements", route => respond(route, { announcements: [], isAdmin: false }));
   await page.route("**/api/v1/server", route => respond(route, { email: true, pushPublicKey: null, socials: [], socialsWeb: [], syncProviders: [] }));
+  await page.route("**/api/v1/event-visibility", route => respond(route, { hidden: [] }));
   await page.route("**/api/v1/reminders", route => respond(route, { calendars: {}, default: { allDay: null, minutesBefore: null }, events: {} }));
   await page.route("**/api/stream?*", () => new Promise<void>(() => {}));
   await page.route(/\/api\/v1\/events(?:\?.*)?$/, route => {
