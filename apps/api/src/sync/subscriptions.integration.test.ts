@@ -1,0 +1,95 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { db, user, calendarMembers, calendarSubscriptions, externalEvents, eventOutbox, events,
+  createSubscription, listSubscriptions, claimSubscription, commitSubscription, failSubscription, removeSubscription,
+  getUsersEvents, getUsersCalendars, setEventVisibility, getEventVisibilityDocument } from "@musubi/db";
+import { assertEventContentAccess, assertEventCalendarAccess } from "../event_permissions";
+import { encryptToken, decryptToken } from "../tokenCrypto";
+import { calendarFeed, feedEvent, feedSeries, feedException } from "./ics_feed.fixture";
+import { parseFeed, feedHash } from "./ics_feed";
+
+async function main() {
+  assert.equal(process.env.ENVIRONMENT, "test");
+  const id = `feed-${randomUUID()}`;
+  const stranger = `feed-stranger-${randomUUID()}`;
+  await db.insert(user).values([id, stranger].map(id => ({ id, name: "Feed test", email: `${id}@example.test` })));
+  const snapshot = (...content: string[]) => ({ events: parseFeed(calendarFeed(...content)), etag: feedHash(content.join()), lastModified: null });
+  const secret = "https://example.test/private-feed-token/calendar.ics";
+  try {
+    const input = { name: "VSO", encryptedURL: await encryptToken(secret), urlHash: feedHash(secret) };
+    const created = await createSubscription(id, input, snapshot(feedEvent(), feedSeries, feedException));
+    const sibling = await createSubscription(id, { ...input, name: "Other", urlHash: feedHash("other") }, snapshot(feedEvent()));
+    assert.equal((await getUsersCalendars(id)).length, 2);
+    assert.equal((await getUsersEvents(id, {})).length, 4, "both calendars appear in the common event query");
+    const [member] = await db.select().from(calendarMembers).where(eq(calendarMembers.calendarID, created.calendarId));
+    assert.equal(member.role, "viewer");
+    const [stored] = await db.select().from(calendarSubscriptions).where(eq(calendarSubscriptions.id, created.id));
+    assert.notEqual(stored.encryptedURL, secret);
+    assert.equal(await decryptToken(stored.encryptedURL), secret);
+    assert(!JSON.stringify(await listSubscriptions(id)).includes("private-feed-token"));
+    assert(!JSON.stringify(await listSubscriptions(id)).includes(stored.encryptedURL));
+    assert.deepEqual(await listSubscriptions(stranger), []);
+    await assert.rejects(removeSubscription(stranger, created.id), /not found/i);
+    assert.equal(await claimSubscription(stranger, created.id, true), undefined);
+    await assert.rejects(createSubscription(id, input, snapshot(feedEvent())), /already subscribed/);
+    const mappings = await db.select().from(externalEvents).where(eq(externalEvents.calendarID, created.calendarId));
+    const single = mappings.find(row => row.icalUid === "one")!;
+    await assert.rejects(assertEventCalendarAccess(id, created.calendarId));
+    await assert.rejects(assertEventContentAccess(id, single.eventID));
+    await setEventVisibility(id, { eventId: single.eventID, hidden: true });
+    assert.equal((await getEventVisibilityDocument(id)).hidden.length, 1);
+    const initial = await claimSubscription(id, created.id, true);
+    assert(initial);
+    await commitSubscription(initial, snapshot(feedEvent("one", "Changed"), feedSeries, feedException));
+    assert.equal((await db.select().from(events).where(eq(events.id, single.eventID)))[0].title, "Changed");
+    assert.equal((await getEventVisibilityDocument(id)).hidden.length, 1, "personal hiding survives refresh");
+    assert.equal(await claimSubscription(id, created.id), undefined, "scheduler respects five-minute interval");
+    const noChange = await claimSubscription(id, created.id, true); assert(noChange);
+    assert.equal(await commitSubscription(noChange, { events: null, etag: noChange.etag, lastModified: null }), false);
+    const invalid = await claimSubscription(id, created.id, true); assert(invalid);
+    const broken = snapshot(feedEvent("one", "Must roll back"), feedEvent("broken"));
+    broken.events[1]!.icalUid = undefined;
+    await assert.rejects(commitSubscription(invalid, broken));
+    assert.equal((await db.select().from(events).where(eq(events.id, single.eventID)))[0].title, "Changed");
+    await failSubscription(invalid, "Refresh unavailable");
+    assert.equal((await listSubscriptions(id)).find(row => row.id === created.id)?.error, "Refresh unavailable");
+    const old = await claimSubscription(id, created.id, true); assert(old);
+    const fresh = await claimSubscription(id, created.id, true); assert(fresh);
+    await commitSubscription(fresh, snapshot(feedEvent("one", "Newest"), feedSeries));
+    assert.equal(await commitSubscription(old, snapshot(feedEvent("one", "Stale"))), false);
+    assert.equal((await db.select().from(events).where(eq(events.id, single.eventID)))[0].title, "Newest");
+    assert.equal((await listSubscriptions(id)).find(row => row.id === created.id)?.error, null);
+    const exception = mappings.find(row => row.externalSeriesID)!;
+    assert((await db.select().from(events).where(eq(events.id, exception.eventID)))[0].deletedAt, "removed exception is retired");
+    const oneOff = await claimSubscription(id, created.id, true); assert(oneOff);
+    await commitSubscription(oneOff, snapshot(feedEvent("series", "Now a single meeting")));
+    const master = mappings.find(row => row.icalUid === "series" && !row.externalSeriesID)!;
+    assert.equal((await db.select().from(events).where(eq(events.id, master.eventID)))[0].recurrence, null, "retired exceptions do not block series becoming one-off");
+    const allDay = await claimSubscription(id, created.id, true); assert(allDay);
+    await commitSubscription(allDay, snapshot(feedEvent("series").replace("DTSTART:20261020T140000Z", "DTSTART;VALUE=DATE:20261020").replace("DTEND:20261020T150000Z", "DTEND;VALUE=DATE:20261021")));
+    assert.equal((await db.select().from(events).where(eq(events.id, master.eventID)))[0].isAllDay, true, "old timed exception does not block all-day conversion");
+    const restored = await claimSubscription(id, created.id, true); assert(restored);
+    await commitSubscription(restored, snapshot(feedSeries, feedException));
+    assert.equal((await db.select().from(events).where(eq(events.id, exception.eventID)))[0].deletedAt, null, "restored override retains its stable identity");
+    const cancelled = await claimSubscription(id, created.id, true); assert(cancelled);
+    await commitSubscription(cancelled, snapshot(feedSeries.replace("SUMMARY:Weekly meeting", "STATUS:CANCELLED\r\nSUMMARY:Weekly meeting"), feedException));
+    assert((await db.select().from(events).where(eq(events.id, master.eventID)))[0].deletedAt, "cancelled master retires the whole family");
+    const empty = await claimSubscription(id, created.id, true); assert(empty);
+    await commitSubscription(empty, snapshot());
+    assert.equal((await getUsersEvents(id, {})).filter(row => !row.event.deletedAt).length, 1, "complete empty feed removes only its mirror events");
+    const pending = await claimSubscription(id, created.id, true); assert(pending);
+    await removeSubscription(id, created.id);
+    assert.equal(await commitSubscription(pending, snapshot(feedEvent())), false, "late refresh cannot resurrect unsubscribed calendar");
+    assert.equal((await listSubscriptions(id))[0].id, sibling.id);
+    assert.equal((await db.select().from(eventOutbox).where(eq(eventOutbox.userID, id))).length, 0, "all subscription operations are provider-read-only");
+    await removeSubscription(id, sibling.id);
+    assert.deepEqual(await listSubscriptions(id), []);
+    console.log("Subscription DB: encrypted links, overlay, readonly guards, hiding, refresh/304, rollback, fencing and unsubscribe passed");
+  } finally {
+    await db.delete(user).where(eq(user.id, id));
+    await db.delete(user).where(eq(user.id, stranger));
+    await db.$client.end();
+  }
+}
+void main();

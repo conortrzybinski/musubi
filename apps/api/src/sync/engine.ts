@@ -56,6 +56,7 @@ import type {
 import { googleAdapter } from "./adapters/google";
 import { caldavAdapter } from "./adapters/caldav";
 import { microsoftAdapter } from "./adapters/microsoft";
+import { subscriptionAccounts, syncSubscription } from "./subscriptions";
 import {
   isOptionalTaskError,
   isTransientSyncError,
@@ -678,11 +679,13 @@ export async function syncUser(
   options: ProviderSyncOptions = {},
 ) {
   const changedCalendarIDs = await runProviderSyncs(
-    Object.values(adapters),
+    [...Object.values(adapters), subscriptionAccounts],
     userID,
     options,
     {
-      syncAccount: syncProvider,
+      syncAccount: (adapter, userID, account) => adapter.provider === "ics"
+        ? syncSubscription(userID, account.id, !!options.throwOnError)
+        : syncProvider(adapter as CalendarAdapter, userID, account),
       onFailure: ({ stage, provider, accountId, error }) => {
         recordExternalSyncFailure(stage, provider);
         // Provider/network hiccups are warn: the next poll retries them. error

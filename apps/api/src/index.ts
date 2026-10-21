@@ -140,6 +140,7 @@ import {
   handlerFederationPreview,
 } from "./handlers/federation";
 import { syncUser, drainEventOutbox } from "./sync/engine";
+import { handlerListSubscriptions, handlerCreateSubscription, handlerRemoveSubscription } from "./handlers/subscriptions";
 import { getExternalSyncUserIDs } from "@musubi/db";
 import {
   middlewareMetrics,
@@ -564,6 +565,9 @@ app.get(
   requireAuth,
   wrap(handlerCheckCaldavStatus),
 );
+app.get("/api/v1/users/connections/subscriptions", requireAuth, wrap(handlerListSubscriptions));
+app.post("/api/v1/users/connections/subscriptions", requireAuth, rateLimit(20, 60_000), wrap(handlerCreateSubscription));
+app.delete("/api/v1/users/connections/subscriptions", requireAuth, wrap(handlerRemoveSubscription));
 app.post(
   "/api/v1/users/connections/caldav",
   requireAuth,

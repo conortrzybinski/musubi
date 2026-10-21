@@ -55,6 +55,7 @@ export function providerDisplayName(cal: Pick<Calendar, "provider" | "serverUrl"
     case "apple": return "Apple Calendar";
     case "google": return "Google Calendar";
     case "microsoft": return "Outlook";
+    case "ics": return "Calendar subscription";
     // A federated calendar lives on another Musubi server, not a CalDAV host —
     // name the host when we have it so it doesn't read as an external provider.
     case "musubi": return cal.serverUrl

@@ -26,7 +26,8 @@ must be reported separately.
   Docker image) and repository-pinned pnpm 11.8.0.
 - Installation uses the unchanged `pnpm-lock.yaml`.
 - Deployment host: homelabtower, confirmed by the user. Initial listener is
-  loopback-only; public domain and OAuth registration remain pending.
+  loopback-only behind private Tailscale HTTPS at
+  `https://homelabtower.taila6f613.ts.net`; Google credentials are configured.
 
 ## Hiding policy
 
@@ -96,3 +97,14 @@ not configured as part of the hiding increment.
 
 See [personal-fork-operations.md](personal-fork-operations.md) for deployment and
 recovery instructions.
+
+## Read-only Outlook subscriptions
+
+The next deployed increment adds HTTPS ICS subscriptions under Connections.
+VSO will use the user's published Outlook feed; KP is deferred because publishing
+is unavailable. This path requires no Microsoft application registration. It
+supports read-only overlay and personal hiding; duplicate display grouping remains
+separate work. See [calendar-subscriptions.md](../sync/calendar-subscriptions.md)
+for refresh behavior, link handling and validation. Deployment readiness and
+actual VSO import are recorded separately; the user enters the private link in
+the application.

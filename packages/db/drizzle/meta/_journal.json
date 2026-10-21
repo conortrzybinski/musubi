@@ -610,6 +610,13 @@
       "when": 1792527387645,
       "tag": "0086_event_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792531345145,
+      "tag": "0087_calendar_subscriptions",
+      "breakpoints": true
     }
   ]
 }

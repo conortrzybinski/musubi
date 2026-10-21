@@ -891,6 +891,23 @@ export const externalCalendars = pgTable(
 
 export type NewExternalCalendar = typeof externalCalendars.$inferInsert;
 
+// Subscription links are bearer credentials: only ciphertext is stored here.
+// The calendar FK also erases the credential when a mirror is disconnected.
+export const calendarSubscriptions = pgTable("calendar_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userID: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  calendarID: uuid("calendar_id").notNull().references(() => calendars.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  encryptedURL: text("encrypted_url").notNull(),
+  urlHash: text("url_hash").notNull(),
+  generation: integer("generation").notNull().default(0),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  error: text("error"),
+}, t => [unique().on(t.userID, t.urlHash), unique().on(t.calendarID)]);
+
 export const externalEvents = pgTable(
   "external_events",
   {
