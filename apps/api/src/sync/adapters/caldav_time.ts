@@ -24,6 +24,9 @@ function text(component: ICAL.Component, name: string): string | null {
 function identity(value: Stamp): OccurrenceStart {
   return OccurrenceStartSchema.parse({ kind: value.kind, value: value.kind === "instant" ? value.instant.toISOString() : value.civil });
 }
+export function caldavOccurrenceIdentity(property: ICAL.Property): OccurrenceStart {
+  return identity(stamp(property));
+}
 function shiftedCivil(civil: string, days: number): string {
   const carrier = new Date(civil.length === 10 ? `${civil}T00:00:00Z` : `${civil}Z`);
   carrier.setUTCDate(carrier.getUTCDate() + days);
@@ -76,7 +79,7 @@ export function normalizeCaldavResource(object: { url: string; etag?: string; da
   return [master, ...components.filter(component => component !== master)].map(component => {
     const recurrenceID = component.getFirstProperty("recurrence-id");
     if (recurrenceID?.getParameter("range")) throw new Error("CalDAV RANGE overrides require scope support.");
-    const originalStart = recurrenceID ? identity(stamp(recurrenceID)) : null;
+    const originalStart = recurrenceID ? caldavOccurrenceIdentity(recurrenceID) : null;
     const suffix = originalStart ? `#musubi-original=${encodeURIComponent(JSON.stringify(originalStart))}` : "";
     if (seen.has(suffix)) throw new Error("CalDAV resource contains duplicate occurrence identities.");
     seen.add(suffix);

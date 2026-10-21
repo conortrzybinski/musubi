@@ -27,8 +27,27 @@ async function main() {
   assert.deepEqual(parseFeed(calendarFeed()), []);
   assert.deepEqual(parseFeed(calendarFeed(feedSeries.replace("SUMMARY:Weekly meeting", "STATUS:CANCELLED\r\nSUMMARY:Weekly meeting"), feedException)), []);
   assert.deepEqual(parseFeed(calendarFeed("BEGIN:VEVENT\r\nUID:cancelled\r\nSTATUS:CANCELLED\r\nEND:VEVENT")), []);
-  for (const invalid of ["<html>Sign in</html>", calendarFeed(feedEvent()).replace("END:VCALENDAR", ""), calendarFeed(feedEvent(), feedEvent()), calendarFeed(feedException), calendarFeed(feedSeries.replace(/Eastern Standard Time/g, "Unknown Custom Zone")), calendarFeed(feedEvent().replace("DTSTART:20261020T140000Z", "DTSTART:invalid"))])
+  for (const invalid of ["<html>Sign in</html>", calendarFeed(feedEvent()).replace("END:VCALENDAR", ""), calendarFeed(feedEvent(), feedEvent()), calendarFeed(feedSeries.replace(/Eastern Standard Time/g, "Unknown Custom Zone")), calendarFeed(feedEvent().replace("DTSTART:20261020T140000Z", "DTSTART:invalid"))])
     assert.throws(() => parseFeed(invalid), /incomplete|unsupported/);
+  const orphan = parseFeed(calendarFeed(feedException))[0]!;
+  assert.equal(orphan.externalId, series[1]!.externalId, "masterless occurrence keeps UID/slot identity");
+  assert.equal(orphan.externalSeriesID, null);
+  assert.equal(orphan.originalStart, null);
+  assert.equal(orphan.recurrence, null);
+  assert.equal(orphan.start.toISOString(), series[1]!.start.toISOString());
+  const moved = parseFeed(calendarFeed(feedException.replace("20261102T110000", "20261102T120000").replace("20261102T120000\r\nSUMMARY", "20261102T130000\r\nSUMMARY")))[0]!;
+  assert.equal(moved.externalId, orphan.externalId, "rescheduling does not change original-slot identity");
+  const otherSlot = feedException.replace(/20261102/g, "20261109");
+  assert.equal(parseFeed(calendarFeed(feedException, otherSlot)).length, 2, "only supplied occurrences are imported");
+  assert.deepEqual(parseFeed(calendarFeed("BEGIN:VEVENT\r\nUID:series\r\nRECURRENCE-ID:20261102T140000Z\r\nSTATUS:CANCELLED\r\nEND:VEVENT")), []);
+  for (const invalid of [calendarFeed(feedException, feedException), calendarFeed(feedException.replace("RECURRENCE-ID;", "RECURRENCE-ID;RANGE=THISANDFUTURE;")), calendarFeed(feedException.replace("END:VEVENT", "RRULE:FREQ=DAILY;COUNT=2\r\nEND:VEVENT"))])
+    assert.throws(() => parseFeed(invalid), /unsupported/);
+  for (const [stamp, kind] of [[";VALUE=DATE:20261102", "date"], [":20261102T090000", "floating"]] as const) {
+    const event = `BEGIN:VEVENT\r\nUID:orphan-${kind}\r\nRECURRENCE-ID${stamp}\r\nDTSTART${stamp}\r\nEND:VEVENT`;
+    const normalized = parseFeed(calendarFeed(event))[0]!;
+    assert.equal(normalized.recurrence, null);
+    assert(normalized.externalId.includes(encodeURIComponent(`"kind":"${kind}"`)));
+  }
   const requests: RequestInit[] = [];
   const result = await fetchFeed("https://example.test/private", undefined, async (_url, options) => { requests.push(options!); return new Response(calendarFeed(feedEvent()), { headers: { etag: '"v1"' } }); });
   assert.equal(result.events?.length, 1);

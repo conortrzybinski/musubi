@@ -52,7 +52,11 @@ must be reapplied.
   refreshes. All-day exclusive end dates, exceptions, cancellations and IANA
   zones are normalized through the existing calendar model. Recognized Outlook
   Windows TZIDs use the CLDR representative IANA zone. Unknown custom zones,
-  masterless overrides and unsupported recurrence forms reject the snapshot.
+  unsupported recurrence forms reject the snapshot. When a feed omits a series
+  master, its explicit occurrences import as standalone events without invented
+  recurrence. UID/original-slot keys preserve identity when that master leaves
+  or returns; occurrence hiding follows the displayed form, while whole-series
+  hiding remains saved for the returning series.
 - Subscription reads use complete snapshots and private lifecycle fences;
   outgoing provider adapters are not registered for this provider.
 

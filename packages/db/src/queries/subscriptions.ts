@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expandRecurringEvents } from "@musubi/calendar";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { BadRequestError, NotFoundError, DEFAULT_CALENDAR_COLOR, type EventTimeModel, type OccurrenceStart } from "@musubi/types";
-import { db, calendarSubscriptions, calendars, calendarMembers, externalCalendars, externalEvents } from "..";
+import { db, calendarSubscriptions, calendars, calendarMembers, externalCalendars, externalEvents, eventVisibility } from "..";
 import { lockCalendarLifecycle, lockUserLifecycle } from "./calendar-lifecycle";
 import { removeCalendarInTransaction, type DbTransaction } from "./calendars";
 import { upsertExternalEventInTransaction, deleteExternalEventInTransaction } from "./external";
@@ -65,9 +65,43 @@ async function applySnapshot(tx: DbTransaction, subscription: Subscription, snap
       if (!event.timeModel || !event.icalUid) throw new Error("Subscription event identity is missing.");
       // The complete new family was validated above. Historical retired
       // exceptions must not participate in this complete-snapshot replacement.
+      const previous = existing.find(row => row.externalEventID === event.externalId);
       changed = await upsertExternalEventInTransaction(tx, true, "ics", subscription.userID, subscription.calendarID, subscription.id,
         event.externalId, { ...event, organizer: event.organizer ?? "", color: calendar.color }, event.etag ?? null, event.icalUid, undefined,
         { timeModel: event.timeModel, externalSeriesID: event.externalSeriesID, originalStart: event.originalStart, isCanceled: event.isCanceled }) || changed;
+      // Hiding follows the explicitly published occurrence when its master
+      // leaves/returns to the feed window. Move slot preferences, and retain
+      // whole-series intent on the master for when that series reappears.
+      if (previous?.externalSeriesID && previous.originalStart && !event.externalSeriesID) {
+        const parent = existing.find(row => row.externalEventID === previous.externalSeriesID);
+        if (!parent) throw new Error("Subscription occurrence lost its parent mapping.");
+        const slot = `${previous.originalStart.kind}:${previous.originalStart.value}`;
+        const preferences = await tx.select().from(eventVisibility).where(and(eq(eventVisibility.eventID, parent.eventID),
+          or(eq(eventVisibility.scopeKey, ""), eq(eventVisibility.scopeKey, slot)))).for("update");
+        for (const preference of preferences) await tx.insert(eventVisibility).values({ userID: preference.userID,
+          eventID: previous.eventID, scopeKey: "", originalStart: null }).onConflictDoNothing();
+        const wholeSeriesUsers = new Set(preferences.filter(preference => preference.scopeKey === "").map(preference => preference.userID));
+        for (const preference of preferences) {
+          // Preserve an independently saved slot alongside whole-series hiding.
+          if (preference.scopeKey !== slot || wholeSeriesUsers.has(preference.userID)) continue;
+          await tx.delete(eventVisibility).where(and(eq(eventVisibility.userID, preference.userID),
+            eq(eventVisibility.eventID, parent.eventID), eq(eventVisibility.scopeKey, slot)));
+        }
+      } else if (previous && !previous.externalSeriesID && event.externalSeriesID && event.originalStart) {
+        const [parent] = await tx.select().from(externalEvents).where(and(eq(externalEvents.provider, "ics"),
+          eq(externalEvents.calendarID, subscription.calendarID), eq(externalEvents.externalEventID, event.externalSeriesID)));
+        if (!parent) throw new Error("Subscription occurrence has no parent mapping.");
+        const preferences = await tx.select().from(eventVisibility).where(eq(eventVisibility.eventID, previous.eventID)).for("update");
+        const wholeSeries = await tx.select({ userID: eventVisibility.userID }).from(eventVisibility)
+          .where(and(eq(eventVisibility.eventID, parent.eventID), eq(eventVisibility.scopeKey, ""))).for("update");
+        const wholeSeriesUsers = new Set(wholeSeries.map(preference => preference.userID));
+        for (const preference of preferences) {
+          if (wholeSeriesUsers.has(preference.userID)) continue;
+          await tx.insert(eventVisibility).values({ userID: preference.userID,
+            eventID: parent.eventID, scopeKey: `${event.originalStart.kind}:${event.originalStart.value}`, originalStart: event.originalStart }).onConflictDoNothing();
+        }
+        await tx.delete(eventVisibility).where(eq(eventVisibility.eventID, previous.eventID));
+      }
     }
   }
   await tx.update(calendarSubscriptions).set({ etag: snapshot.etag, lastModified: snapshot.lastModified, lastSuccessAt: new Date(), error: null })

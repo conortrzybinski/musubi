@@ -1019,7 +1019,15 @@ export async function upsertExternalEventInTransaction(
       const contentChanged = map.event.deletedAt !== null || Object.keys(patch).length > 0 || !!(temporal && map.event.isCanceled !== temporal.isCanceled);
       if (!temporal) assertLegacyEventTimePatch(map.event, patch);
       else {
-        if (map.event.seriesID && (map.event.seriesID !== temporal.seriesID || !sameTimeMetadata(map.event.originalStart, temporal.originalStart)))
+        // A complete read-only subscription snapshot can retain an explicitly
+        // published occurrence after its master leaves the feed window. Its
+        // source key still proves the same UID/slot; only local parentage clears.
+        const detachedSubscriptionOccurrence = provider === "ics" && deferFamilyValidation &&
+          temporal.seriesID === null && temporal.originalStart === null &&
+          !!map.externalSeriesID && !!map.originalStart &&
+          sameTimeMetadata(map.event.originalStart, map.originalStart) &&
+          externalEventID === `${map.externalSeriesID}#musubi-original=${encodeURIComponent(JSON.stringify(map.originalStart))}`;
+        if (map.event.seriesID && (map.event.seriesID !== temporal.seriesID || !sameTimeMetadata(map.event.originalStart, temporal.originalStart)) && !detachedSubscriptionOccurrence)
           throw new Error("Provider occurrence identity cannot change.");
         for (const key of ["timeModel", "seriesID", "originalStart", "isCanceled"] as const)
           if (!sameTimeMetadata(map.event[key], temporal[key])) Object.assign(patch, { [key]: temporal[key] });

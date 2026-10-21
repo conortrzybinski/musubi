@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import ICAL from "ical.js";
 import { canonicalTimeZone, outlookWindowsZone } from "@musubi/calendar";
-import { normalizeCaldavResource } from "./adapters/caldav_time";
+import { caldavOccurrenceIdentity, normalizeCaldavResource } from "./adapters/caldav_time";
 import { createGuardedCaldavFetch } from "./caldav_client";
 import type { NormalizedEvent } from "./adapter";
 
@@ -45,6 +45,28 @@ export function parseFeed(text: string): NormalizedEvent[] {
     }
     return [...groups.entries()].flatMap(([uid, family]) => {
       const masters = family.filter(component => !component.hasProperty("recurrence-id"));
+      if (!masters.length) {
+        // Published feeds may omit the master outside their publication window.
+        // Keep only the explicit occurrences, keyed by their original slot;
+        // never infer the missing series or generate additional appointments.
+        const seen = new Set<string>();
+        return family.flatMap(component => {
+          const recurrenceID = component.getFirstProperty("recurrence-id")!;
+          if (recurrenceID.getParameter("range") || ["rrule", "rdate", "exdate"].some(name => component.hasProperty(name))) throw new Error();
+          const original = caldavOccurrenceIdentity(recurrenceID);
+          const externalId = `ics:${feedHash(uid)}#musubi-original=${encodeURIComponent(JSON.stringify(original))}`;
+          if (seen.has(externalId)) throw new Error();
+          seen.add(externalId);
+          if (String(component.getFirstPropertyValue("status")).toUpperCase() === "CANCELLED") return [];
+          const standalone = new ICAL.Component(structuredClone(component.toJSON()));
+          standalone.removeProperty("recurrence-id");
+          const resource = new ICAL.Component(["vcalendar", [], []]);
+          resource.addPropertyWithValue("version", "2.0");
+          resource.addSubcomponent(standalone);
+          const data = resource.toString();
+          return normalizeCaldavResource({ url: externalId, data, etag: feedHash(data) }).map(({ providerState: _state, ...event }) => event);
+        });
+      }
       if (masters.length !== 1) throw new Error();
       // Cancelling a series also retires any old overrides. A cancellation
       // tombstone need not repeat the master's original time fields.
@@ -56,7 +78,7 @@ export function parseFeed(text: string): NormalizedEvent[] {
       return normalizeCaldavResource({ url: `ics:${feedHash(uid)}`, data, etag: feedHash(data) }).map(({ providerState: _state, ...event }) => event);
     });
   } catch {
-    throw new FeedError("The feed is incomplete or contains an unsupported event or time zone. The previous import was kept.");
+    throw new FeedError("The feed is incomplete or contains an unsupported event or time zone. No calendar data was changed.");
   }
 }
 
